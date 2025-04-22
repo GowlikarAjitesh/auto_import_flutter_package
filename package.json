@@ -9,17 +9,28 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+  "onLanguage:dart",
+  "onStartupFinished"
+],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "auto-import-flutter.helloWorld",
-        "title": "auto import flutter"
+  "configuration": {
+    "title": "Flutter Auto Import",
+    "properties": {
+      "flutterAutoImport.enableSuggestions": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable automatic suggestions for pub.dev packages"
+      },
+      "flutterAutoImport.autoPubGetOnSave": {
+        "type": "boolean",
+        "default": true,
+        "description": "Run flutter pub get when pubspec.yaml is saved"
       }
-    ]
-    
-  },
+    }
+  }
+},
   "configuration": {
   "type": "object",
   "title": "Flutter Auto Import",
