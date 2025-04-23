@@ -1,71 +1,58 @@
-# auto-import-flutter README
+# Flutter Auto Import Extension
 
-This is the README for your extension "auto-import-flutter". After writing up a brief description, we recommend including the following sections.
+![VS Code Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/your-name.flutter-auto-import)
+![VS Code Installs](https://img.shields.io/visual-studio-marketplace/i/your-name.flutter-auto-import)
+![License](https://img.shields.io/github/license/your-name/flutter-auto-import)
+
+A Visual Studio Code extension that simplifies Flutter package management by automatically suggesting, adding, and importing packages with intelligent detection of existing dependencies.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- 🔍 **Smart Package Search**: Find Flutter packages by typing partial names
+- ⚡ **One-Click Import**: Add packages to `pubspec.yaml` and import them with a single action
+- ✅ **Dependency Awareness**: Know which packages are already installed or imported
+- 🚀 **Quick Actions**: Code actions for quick package management
+- ⏱️ **Auto Pub Get**: Automatically run `flutter pub get` when `pubspec.yaml` changes
 
-For example if there is an image subfolder under your extension project workspace:
+## Installation
 
-\!\[feature X\]\(images/feature-x.png\)
+1. Open VS Code
+2. Go to Extensions view (`Ctrl+Shift+X`)
+3. Search for "Flutter Auto Import"
+4. Click Install
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+## Usage
 
-## Requirements
+### Basic Usage
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+1. Select a word in your Dart file that might be a package name
+2. Press `Ctrl+Shift+A` (Windows/Linux) or `Cmd+Shift+A` (Mac)
+3. Select a package from the suggestions
+4. The extension will:
+   - Add the package to `pubspec.yaml` (if not present)
+   - Run `flutter pub get`
+   - Add the import statement at the top of your file
+   - Remove your original selected text
 
-## Extension Settings
+### Code Actions
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+When you select text that matches a package name, you'll see lightbulb 💡 suggestions:
+- **Add & import**: For new packages
+- **Import**: For packages already in `pubspec.yaml`
+- (No action shown for packages already imported)
 
-For example:
+### Commands
 
-This extension contributes the following settings:
+| Command | Description | Default Keybinding |
+|---------|-------------|--------------------|
+| `Flutter: Show Package Suggestions` | Search for packages matching selected text | `Ctrl+Shift+A` |
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## Configuration
 
-## Known Issues
+Add these to your VS Code settings (`settings.json`):
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+```json
+{
+  "flutterAutoImport.autoPubGetOnSave": true,
+  "flutterAutoImport.enableSuggestions": true
+}
