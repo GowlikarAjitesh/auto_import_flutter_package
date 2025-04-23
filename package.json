@@ -15,7 +15,7 @@
 ],
   "main": "./dist/extension.js",
   "contributes": {
-  "configuration": {
+    "configuration": {
     "title": "Flutter Auto Import",
     "properties": {
       "flutterAutoImport.enableSuggestions": {
@@ -29,7 +29,21 @@
         "description": "Run flutter pub get when pubspec.yaml is saved"
       }
     }
-  }
+    },
+    "commands": [
+      {
+        "command": "flutterAutoImport.showPackageSuggestions",
+        "title": "Flutter: Check for Package"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "flutterAutoImport.showPackageSuggestions",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus && editorLangId == dart"
+      }
+    ]
 },
   "configuration": {
   "type": "object",

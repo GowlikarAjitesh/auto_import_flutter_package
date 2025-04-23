@@ -7,13 +7,22 @@ import * as fs from 'fs';
 let pubGetTimeout: NodeJS.Timeout | undefined;
 let diagnosticCollection: vscode.DiagnosticCollection;
 
+// Debounce utility
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | undefined;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('Flutter Auto Import extension is now active!');
 
   diagnosticCollection = vscode.languages.createDiagnosticCollection('flutterAutoImport');
   context.subscriptions.push(diagnosticCollection);
 
-  // Code Action Provider
+  // Register Code Action Provider
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider('dart', new PubspecSuggestionProvider(), {
       providedCodeActionKinds: PubspecSuggestionProvider.providedCodeActionKinds
@@ -43,42 +52,97 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Run diagnostics on active editor
-  vscode.workspace.onDidChangeTextDocument((event) => {
-    runDiagnostics(event.document);
-  });
+  // Register Suggestion Command (Ctrl+Shift+A)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('flutterAutoImport.showPackageSuggestions', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'dart') {
+        vscode.window.showInformationMessage('No active Dart editor found.');
+        return;
+      }
 
-  if (vscode.window.activeTextEditor) {
-    runDiagnostics(vscode.window.activeTextEditor.document);
-  }
+      const selection = editor.selection;
+      const selectedText = editor.document.getText(selection).trim();
+
+      if (!selectedText) {
+        vscode.window.showInformationMessage('Please select a word to check for packages.');
+        return;
+      }
+
+      if (!selectedText.match(/^[a-z0-9_]+$/i)) {
+        vscode.window.showInformationMessage('Please select a valid package name (letters, numbers or underscores).');
+        return;
+      }
+
+      await checkAndShowPackageSuggestions(selectedText);
+    })
+  );
 }
 
 class PubspecSuggestionProvider implements vscode.CodeActionProvider {
   static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
 
-  async provideCodeActions(document: vscode.TextDocument, range: vscode.Range): Promise<vscode.CodeAction[] | undefined> {
-    const word = document.getText(range);
-    if (!word.match(/^[a-z_]+$/)) {return;}
+  async provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range | vscode.Selection
+  ): Promise<vscode.CodeAction[] | undefined> {
+    const selectedText = document.getText(range).trim();
+    if (!selectedText.match(/^[a-z0-9_]+$/i)) return;
 
     const pubspecPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'pubspec.yaml');
-    if (!fs.existsSync(pubspecPath)) {return;}
+    if (!fs.existsSync(pubspecPath)) return;
 
     const content = fs.readFileSync(pubspecPath, 'utf8');
-    if (content.includes(`${word}:`)) {return;}
+    if (content.includes(`${selectedText}:`)) return;
 
     const config = vscode.workspace.getConfiguration('flutterAutoImport');
-    if (!config.get<boolean>('enableSuggestions', true)) {return;}
+    if (!config.get<boolean>('enableSuggestions', true)) return;
 
-    const exists = await checkPackageExists(word);
-    if (!exists) {return;}
+    const packages = await fetchMatchingPackages(selectedText);
+    if (!packages.length) return;
 
-    const action = new vscode.CodeAction(`✨ Add '${word}' to pubspec.yaml`, vscode.CodeActionKind.QuickFix);
-    action.command = {
-      title: 'Add Pub Package',
-      command: 'flutterAutoImport.addPubPackage',
-      arguments: [word]
-    };
-    return [action];
+    return packages.map(pkg => {
+      const action = new vscode.CodeAction(`✨ Add '${pkg}' to pubspec.yaml`, vscode.CodeActionKind.QuickFix);
+      action.command = {
+        title: 'Add Pub Package',
+        command: 'flutterAutoImport.addPubPackage',
+        arguments: [pkg]
+      };
+      return action;
+    });
+  }
+}
+
+async function checkAndShowPackageSuggestions(query: string) {
+  const loadingMessage = vscode.window.setStatusBarMessage('🔍 Searching for packages...');
+  
+  try {
+    const packages = await fetchMatchingPackages(query);
+    
+    if (packages.length === 0) {
+      vscode.window.showInformationMessage(`No packages found matching '${query}'`);
+      return;
+    }
+
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.items = packages.map(pkg => ({ label: pkg }));
+    quickPick.title = `Select a package to add to pubspec.yaml`;
+    quickPick.placeholder = 'Type to filter packages';
+
+    quickPick.onDidChangeSelection(async selection => {
+      if (selection[0]) {
+        const pkg = selection[0].label;
+        quickPick.dispose();
+        await runFlutterPubAdd(pkg);
+      }
+    });
+
+    quickPick.onDidHide(() => quickPick.dispose());
+    quickPick.show();
+  } catch (error) {
+    vscode.window.showErrorMessage(`Failed to search for packages: ${error}`);
+  } finally {
+    loadingMessage.dispose();
   }
 }
 
@@ -89,20 +153,30 @@ function runFlutterPubAdd(pkg: string) {
     return;
   }
 
-  exec(`flutter pub add ${pkg}`, { cwd }, (err, stdout, stderr) => {
-    if (err) {
-      vscode.window.showErrorMessage(`❌ Failed to add ${pkg}: ${stderr}`);
-    } else {
-      vscode.window.showInformationMessage(`✅ Package '${pkg}' added to pubspec.yaml`);
-
-      exec(`flutter pub get`, { cwd }, (err2, stdout2, stderr2) => {
-        if (err2) {
-          vscode.window.showErrorMessage(`❌ Failed to run pub get: ${stderr2}`);
-        } else {
-          vscode.window.showInformationMessage(`📦 flutter pub get completed`);
+  vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: `Adding package ${pkg}...`,
+    cancellable: false
+  }, async (progress) => {
+    return new Promise<void>((resolve) => {
+      exec(`flutter pub add ${pkg}`, { cwd }, (err, stdout, stderr) => {
+        if (err) {
+          vscode.window.showErrorMessage(`❌ Failed to add ${pkg}: ${stderr}`);
+          resolve();
+          return;
         }
+
+        progress.report({ message: "Running flutter pub get..." });
+        exec(`flutter pub get`, { cwd }, (err2, stdout2, stderr2) => {
+          if (err2) {
+            vscode.window.showErrorMessage(`❌ Failed to run pub get: ${stderr2}`);
+          } else {
+            vscode.window.showInformationMessage(`✅ Package '${pkg}' added and dependencies updated`);
+          }
+          resolve();
+        });
       });
-    }
+    });
   });
 }
 
@@ -118,48 +192,32 @@ function runFlutterPubGet() {
   existingTerminal.sendText("flutter pub get");
 }
 
-function checkPackageExists(pkg: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    https.get(`https://pub.dev/api/packages/${pkg}`, (res) => {
-      resolve(res.statusCode === 200);
-    }).on('error', () => resolve(false));
+function fetchMatchingPackages(query: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    https.get(`https://pub.dev/api/search?q=${encodeURIComponent(query)}`, (res) => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`Request failed with status code ${res.statusCode}`));
+        return;
+      }
+
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        try {
+          const results = JSON.parse(data);
+          const packages = results.packages?.slice(0, 10).map((pkg: any) => pkg.package) || [];
+          resolve(packages);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on('error', (err) => {
+      reject(err);
+    });
   });
 }
 
-function runDiagnostics(document: vscode.TextDocument) {
-  if (document.languageId !== 'dart') {return;}
-
-  const diagnostics: vscode.Diagnostic[] = [];
-  const pubspecPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'pubspec.yaml');
-  const content = fs.existsSync(pubspecPath) ? fs.readFileSync(pubspecPath, 'utf8') : "";
-
-  const regex = /\b([a-z_]{2,})\b/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(document.getText())) !== null) {
-    const pkg = match[1];
-
-    if (content.includes(`${pkg}:`)) {continue;}
-
-    checkPackageExists(pkg).then((exists) => {
-      if (!exists) {return;}
-      const range = new vscode.Range(
-        document.positionAt(match!.index),
-        document.positionAt(match!.index + pkg.length)
-      );
-
-      const diagnostic = new vscode.Diagnostic(
-        range,
-        `Possible missing package: '${pkg}'`,
-        vscode.DiagnosticSeverity.Information
-      );
-      diagnostic.code = 'flutterAutoImport';
-      diagnostics.push(diagnostic);
-      diagnosticCollection.set(document.uri, diagnostics);
-    });
-  }
-}
-
 export function deactivate() {
-  if (pubGetTimeout) {clearTimeout(pubGetTimeout);}
-  if (diagnosticCollection) {diagnosticCollection.dispose();}
+  if (pubGetTimeout) clearTimeout(pubGetTimeout);
+  if (diagnosticCollection) diagnosticCollection.dispose();
 }
