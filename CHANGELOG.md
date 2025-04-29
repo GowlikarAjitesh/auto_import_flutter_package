@@ -1,9 +1,3 @@
-# Change Log
+# 1.0.0
 
-All notable changes to the "auto-import-flutter" extension will be documented in this file.
-
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Initial release
+- Initial release with package auto-import and smart detection

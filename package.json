@@ -1,18 +1,32 @@
 {
   "name": "auto-import-flutter",
-  "displayName": "auto-import-flutter",
+  "displayName": "Auto Import Flutter ",
   "description": "This extension is used to automatically import flutter packages.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.99.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Extension Packs",
+    "Snippets"
+  ],
+  "icon": "images/icon2.png",
+  "publisher": "ajitesh-gowlikar",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GowlikarAjitesh/auto_import_flutter_package/"
+  },
+  "keywords": [
+    "flutter",
+    "dart",
+    "import",
+    "productivity"
   ],
   "activationEvents": [
-  "onLanguage:dart",
-  "onStartupFinished"
-],
+    "onLanguage:dart",
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
@@ -21,46 +35,41 @@
         "flutterAutoImport.autoPubGetOnSave": {
           "type": "boolean",
           "default": true,
-          "description": "Run 'flutter pub get' automatically when pubspec.yaml is saved"
+          "description": "Run flutter pub get when pubspec.yaml is saved"
         },
         "flutterAutoImport.enableSuggestions": {
           "type": "boolean",
           "default": true,
           "description": "Enable package suggestions in the editor"
-        },
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "flutterAutoImport.showPackageSuggestions",
+        "title": "Flutter: Show Package Suggestions"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "flutterAutoImport.showPackageSuggestions",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorTextFocus && editorLangId == dart"
+      }
+    ]
+  },
+  "configuration": {
+    "type": "object",
+    "title": "Flutter Auto Import",
+    "properties": {
       "flutterAutoImport.autoPubGetOnSave": {
         "type": "boolean",
         "default": true,
-        "description": "Run flutter pub get when pubspec.yaml is saved"
+        "description": "Automatically run 'flutter pub get' when pubspec.yaml is saved"
       }
     }
-    },
-        "commands": [
-          {
-            "command": "flutterAutoImport.showPackageSuggestions",
-            "title": "Flutter: Show Package Suggestions"
-          }
-        ],
-        "keybindings": [
-          {
-            "command": "flutterAutoImport.showPackageSuggestions",
-            "key": "ctrl+shift+a",
-            "mac": "cmd+shift+a",
-            "when": "editorTextFocus && editorLangId == dart"
-          }
-        ]
-    },
-  "configuration": {
-  "type": "object",
-  "title": "Flutter Auto Import",
-  "properties": {
-    "flutterAutoImport.autoPubGetOnSave": {
-      "type": "boolean",
-      "default": true,
-      "description": "Automatically run 'flutter pub get' when pubspec.yaml is saved"
-    }
-  }
-},
+  },
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
@@ -76,16 +85,19 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.99.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.99.0",
     "@typescript-eslint/eslint-plugin": "^8.28.0",
     "@typescript-eslint/parser": "^8.28.0",
-    "eslint": "^9.23.0",
-    "esbuild": "^0.25.1",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.8.2",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "esbuild": "^0.25.1",
+    "eslint": "^9.23.0",
+    "js-yaml": "^4.1.0",
+    "mocha": "^10.2.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.2"
   }
 }

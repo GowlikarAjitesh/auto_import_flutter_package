@@ -3,6 +3,7 @@ import { exec } from "child_process";
 import * as path from "path";
 import * as https from "https";
 import * as fs from "fs";
+import * as yaml from "js-yaml";
 
 let pubGetTimeout: NodeJS.Timeout | undefined;
 let diagnosticCollection: vscode.DiagnosticCollection;
@@ -12,6 +13,10 @@ interface PackageInfo {
   description?: string;
   isInstalled: boolean;
   isImported: boolean;
+  methods?: string[];
+  version?: string;
+  popularity?: number;
+  latestVersion?: string;
 }
 
 function debounce<T extends (...args: any[]) => any>(
@@ -40,6 +45,18 @@ export function activate(context: vscode.ExtensionContext) {
         providedCodeActionKinds:
           PubspecSuggestionProvider.providedCodeActionKinds,
       }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider("dart", new PackageHoverProvider())
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      "dart",
+      new FunctionCompletionProvider(),
+      "."
     )
   );
 
@@ -73,6 +90,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
+      "flutterAutoImport.removePubPackage",
+      async (pkg: string) => {
+        await runFlutterPubRemove(pkg);
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
       "flutterAutoImport.showPackageSuggestions",
       async () => {
         const editor = vscode.window.activeTextEditor;
@@ -84,6 +110,7 @@ export function activate(context: vscode.ExtensionContext) {
         const selectedText = editor.document.getText(selection).trim();
 
         if (!selectedText || !selectedText.match(/^[a-z0-9_]+$/i)) {
+          await showPackageSearch("");
           return;
         }
 
@@ -95,6 +122,113 @@ export function activate(context: vscode.ExtensionContext) {
       }
     )
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "flutterAutoImport.searchPackages",
+      async () => {
+        const editor = vscode.window.activeTextEditor;
+        const selectedText = editor
+          ? editor.document.getText(editor.selection).trim()
+          : "";
+        await showPackageSearch(selectedText);
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "flutterAutoImport.searchPackagesKey",
+      async () => {
+        const editor = vscode.window.activeTextEditor;
+        const selectedText = editor
+          ? editor.document.getText(editor.selection).trim()
+          : "";
+        await showPackageSearch(selectedText);
+      }
+    )
+  );
+}
+
+class PackageHoverProvider implements vscode.HoverProvider {
+  async provideHover(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    token: vscode.CancellationToken
+  ): Promise<vscode.Hover | undefined> {
+    const range = document.getWordRangeAtPosition(position, /[a-z0-9_]+/i);
+    if (!range || token.isCancellationRequested) return undefined;
+
+    const word = document.getText(range);
+    const packages = await fetchMatchingPackages(word, document);
+    const pkg = packages.find((p) => p.name === word && p.isInstalled);
+
+    if (!pkg) return undefined;
+
+    const content = new vscode.MarkdownString();
+    content.appendMarkdown(`**${pkg.name}**`);
+
+    if (pkg.version || pkg.latestVersion) {
+      content.appendMarkdown(
+        `\n\n**Version:** ${pkg.version || "Not installed"} (latest: ${
+          pkg.latestVersion || "unknown"
+        })`
+      );
+    }
+
+    if (pkg.popularity) {
+      content.appendMarkdown(
+        `\n\n**Popularity:** ${Math.round(pkg.popularity * 100)}%`
+      );
+    }
+
+    if (pkg.description) {
+      content.appendMarkdown(`\n\n${pkg.description}`);
+    }
+
+    if (pkg.methods && pkg.methods.length > 0) {
+      content.appendMarkdown("\n\n**Available Methods/Widgets:**");
+      pkg.methods.forEach((method) => {
+        content.appendMarkdown(`\n- \`${method}\``);
+      });
+    }
+
+    content.isTrusted = true;
+    return new vscode.Hover(content, range);
+  }
+}
+
+class FunctionCompletionProvider implements vscode.CompletionItemProvider {
+  async provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position
+  ): Promise<vscode.CompletionItem[]> {
+    const line = document.lineAt(position).text;
+    const match = line.match(/(\w+)\.(\w*)$/);
+    if (!match) return [];
+
+    const [, packageName, partial] = match;
+    const packages = await fetchMatchingPackages(packageName, document);
+    const pkg = packages.find((p) => p.name === packageName && p.isInstalled);
+
+    if (!pkg || !pkg.methods) return [];
+
+    return pkg.methods
+      .filter((method) => method.startsWith(partial))
+      .map((method) => {
+        const item = new vscode.CompletionItem(
+          method,
+          vscode.CompletionItemKind.Method
+        );
+        item.insertText = new vscode.SnippetString(
+          `${method}(\${1:parameters})`
+        );
+        item.documentation = new vscode.MarkdownString(
+          `Auto-generated template for ${packageName}.${method}`
+        );
+        return item;
+      });
+  }
 }
 
 class PubspecSuggestionProvider implements vscode.CodeActionProvider {
@@ -119,51 +253,228 @@ class PubspecSuggestionProvider implements vscode.CodeActionProvider {
       .getText()
       .includes(`package:${selectedText}/${selectedText}.dart`);
 
-    if (isInstalled && isImported) {
-      return [];
-    }
+    const actions: vscode.CodeAction[] = [];
 
     if (isInstalled) {
-      const action = new vscode.CodeAction(
+      const importAction = new vscode.CodeAction(
         `📦 Import '${selectedText}' (already installed)`,
         vscode.CodeActionKind.QuickFix
       );
-      action.command = {
+      importAction.command = {
         title: "Import Package",
         command: "flutterAutoImport.addPubPackage",
         arguments: [selectedText, document, range],
       };
-      return [action];
+      actions.push(importAction);
+
+      const removeAction = new vscode.CodeAction(
+        `🗑️ Remove '${selectedText}' from pubspec.yaml`,
+        vscode.CodeActionKind.QuickFix
+      );
+      removeAction.command = {
+        title: "Remove Package",
+        command: "flutterAutoImport.removePubPackage",
+        arguments: [selectedText],
+      };
+      actions.push(removeAction);
+    }
+
+    if (isInstalled && isImported) {
+      return actions;
     }
 
     const config = vscode.workspace.getConfiguration("flutterAutoImport");
-    if (!config.get<boolean>("enableSuggestions", true)) return;
+    if (!config.get<boolean>("enableSuggestions", true)) return actions;
 
     const packages = await fetchMatchingPackages(selectedText, document);
     const availablePackages = packages.filter(
       (pkg) => !(pkg.isInstalled && pkg.isImported)
     );
 
-    if (!availablePackages.length) return;
+    if (!availablePackages.length) return actions;
 
-    return availablePackages.map((pkg) => {
-      const action = new vscode.CodeAction(
-        pkg.isInstalled
-          ? `📦 Import '${pkg.name}' (already installed)`
-          : `✨ Add & import '${pkg.name}'`,
-        vscode.CodeActionKind.QuickFix
-      );
-      action.command = {
-        title: pkg.isInstalled ? "Import Package" : "Add & Import Package",
-        command: "flutterAutoImport.addPubPackage",
-        arguments: [pkg.name, document, range],
-      };
-      if (pkg.description) {
-        action.title = pkg.description;
-      }
-      return action;
-    });
+    return [
+      ...actions,
+      ...availablePackages.map((pkg) => {
+        const action = new vscode.CodeAction(
+          pkg.isInstalled
+            ? `📦 Import '${pkg.name}' (already installed)`
+            : `✨ Add & import '${pkg.name}'`,
+          vscode.CodeActionKind.QuickFix
+        );
+        action.command = {
+          title: pkg.isInstalled ? "Import Package" : "Add & Import Package",
+          command: "flutterAutoImport.addPubPackage",
+          arguments: [pkg.name, document, range],
+        };
+        if (pkg.description) {
+          action.title += ` - ${truncateDescription(pkg.description, 50)}`;
+        }
+        return action;
+      }),
+    ];
   }
+}
+
+async function showPackageSearch(initialQuery: string) {
+  const quickPick = vscode.window.createQuickPick();
+  quickPick.placeholder =
+    "Search Flutter packages (type to filter, select to add/import)";
+  quickPick.matchOnDescription = true;
+  quickPick.matchOnDetail = true;
+  quickPick.value = initialQuery;
+  let showInstalledOnly = false;
+
+  const filterButton: vscode.QuickInputButton = {
+    iconPath: new vscode.ThemeIcon("filter"),
+    tooltip: "Show installed packages only",
+  };
+  quickPick.buttons = [filterButton];
+
+  quickPick.show();
+
+  interface CustomQuickPickItem extends vscode.QuickPickItem {
+    pkg: PackageInfo;
+    buttons?: vscode.QuickInputButton[];
+  }
+
+  const updateItems = debounce(async (query: string) => {
+    quickPick.busy = true;
+    try {
+      const editor = vscode.window.activeTextEditor;
+      const document = editor?.document;
+      if (!document) {
+        quickPick.items = [{ label: "No active editor", alwaysShow: true }];
+        return;
+      }
+
+      let packages: PackageInfo[] = [];
+      if (showInstalledOnly) {
+        packages = await getInstalledPackages(document);
+        if (query) {
+          packages = packages.filter(
+            (pkg) =>
+              pkg.name.toLowerCase().includes(query.toLowerCase()) ||
+              (pkg.description &&
+                pkg.description.toLowerCase().includes(query.toLowerCase()))
+          );
+        }
+        // showInstalledOnly = !showInstalledOnly;
+      } else {
+        packages = await fetchMatchingPackages(query, document);
+      }
+
+      if (packages.length === 0) {
+        quickPick.items = [
+          {
+            label: showInstalledOnly
+              ? "No installed packages match your search"
+              : "No packages found",
+            alwaysShow: true,
+          },
+        ];
+        return;
+      }
+
+      quickPick.items = packages.map<CustomQuickPickItem>((pkg) => {
+        const item: CustomQuickPickItem = {
+          label: pkg.isInstalled ? `✓ ${pkg.name}` : pkg.name,
+          description: pkg.description
+            ? truncateDescription(pkg.description, 60)
+            : "No description available",
+          detail: [
+            pkg.isImported ? "📦 Already imported in this file" : null,
+            pkg.isInstalled ? "📦 Installed in project" : null,
+            pkg.version ? `Version: ${pkg.version}` : null,
+            pkg.popularity
+              ? `Popularity: ${Math.round(pkg.popularity * 100)}%`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" | "),
+          alwaysShow: true,
+          pkg: pkg,
+        };
+
+        item.buttons = [];
+        if (pkg.isInstalled) {
+          item.buttons.push({
+            iconPath: new vscode.ThemeIcon("trash"),
+            tooltip: `Remove ${pkg.name} from pubspec.yaml`,
+          });
+        } else {
+          item.buttons.push({
+            iconPath: new vscode.ThemeIcon("add"),
+            tooltip: `Add ${pkg.name} to pubspec.yaml`,
+          });
+        }
+
+        return item;
+      });
+    } catch (error) {
+      console.error("Error updating items:", error);
+      quickPick.items = [
+        { label: "Error fetching packages", alwaysShow: true },
+      ];
+    } finally {
+      quickPick.busy = false;
+    }
+  }, 500);
+
+  quickPick.onDidChangeValue(updateItems);
+
+  quickPick.onDidChangeSelection(async (selection) => {
+    if (selection[0]) {
+      const pkg = (selection[0] as CustomQuickPickItem).pkg;
+      quickPick.value = "";
+      quickPick.items = [];
+
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+
+      if (pkg.isInstalled) {
+        await addImportStatement(pkg.name, editor.document, editor.selection);
+      } else {
+        await runFlutterPubAdd(pkg.name, editor.document, editor.selection);
+      }
+    }
+  });
+
+  quickPick.onDidTriggerItemButton(async ({ item, button }) => {
+    const pkg = (item as CustomQuickPickItem).pkg;
+    quickPick.value = "";
+    quickPick.items = [];
+
+    if ((button as any).iconPath.id === "trash") {
+      await runFlutterPubRemove(pkg.name);
+    } else if ((button as any).iconPath.id === "add") {
+      const editor = vscode.window.activeTextEditor;
+      if (editor) {
+        await runFlutterPubAdd(pkg.name, editor.document, editor.selection);
+      }
+    }
+  });
+
+  quickPick.onDidTriggerButton(async (button) => {
+    // if (button === filterButton) {
+    showInstalledOnly = !showInstalledOnly;
+    quickPick.buttons = [
+      {
+        iconPath: new vscode.ThemeIcon(
+          showInstalledOnly ? "list-filter" : "filter"
+        ),
+        tooltip: showInstalledOnly
+          ? "Show all packages"
+          : "Show installed packages only",
+      },
+    ];
+    await updateItems(quickPick.value);
+    // }
+  });
+
+  quickPick.onDidHide(() => quickPick.dispose());
+
+  await updateItems(initialQuery);
 }
 
 async function checkAndShowPackageSuggestions(
@@ -189,45 +500,154 @@ async function checkAndShowPackageSuggestions(
     }
 
     const quickPick = vscode.window.createQuickPick();
+    quickPick.placeholder = `Packages matching "${query}" (type to filter, select to add/import)`;
+    quickPick.matchOnDescription = true;
+    quickPick.matchOnDetail = true;
+    quickPick.value = query;
+    let showInstalledOnly = false;
+
+    const filterButton: vscode.QuickInputButton = {
+      iconPath: new vscode.ThemeIcon("filter"),
+      tooltip: "Show installed packages only",
+    };
+    quickPick.buttons = [filterButton];
+
+    quickPick.show();
+
     interface CustomQuickPickItem extends vscode.QuickPickItem {
-      pkg: string;
-      isInstalled: boolean;
+      pkg: PackageInfo;
+      buttons?: vscode.QuickInputButton[];
     }
 
-    quickPick.items = availablePackages.map<CustomQuickPickItem>((pkg) => ({
-      label: pkg.isInstalled ? `✓ ${pkg.name}` : pkg.name,
-      description: pkg.description
-        ? truncateDescription(pkg.description, 60)
-        : "No description available",
-      detail: pkg.isImported
-        ? "📦 Already imported in this file"
-        : pkg.isInstalled
-        ? "📦 Already installed - will only add import"
-        : `📦 ${pkg.description || "Popular Flutter package"}`,
-      alwaysShow: true,
-      pkg: pkg.name,
-      isInstalled: pkg.isInstalled,
-    }));
+    const updateItems = debounce(async (newQuery: string) => {
+      quickPick.busy = true;
+      try {
+        let packages: PackageInfo[];
+        if (showInstalledOnly) {
+          packages = await getInstalledPackages(document);
+          if (newQuery) {
+            packages = packages.filter(
+              (pkg) =>
+                pkg.name.toLowerCase().includes(newQuery.toLowerCase()) ||
+                (pkg.description &&
+                  pkg.description
+                    .toLowerCase()
+                    .includes(newQuery.toLowerCase()))
+            );
+          }
+        } else {
+          packages = await fetchMatchingPackages(newQuery || query, document);
+        }
 
-    quickPick.placeholder = "Type to filter packages";
-    quickPick.placeholder = "Type to filter packages";
+        const filteredPackages = showInstalledOnly
+          ? packages
+          : packages.filter((pkg) => !(pkg.isInstalled && pkg.isImported));
+
+        if (filteredPackages.length === 0) {
+          quickPick.items = [
+            {
+              label: showInstalledOnly
+                ? "No installed packages match your search"
+                : "No packages found",
+              alwaysShow: true,
+            },
+          ];
+          return;
+        }
+
+        quickPick.items = filteredPackages.map<CustomQuickPickItem>((pkg) => {
+          const item: CustomQuickPickItem = {
+            label: pkg.isInstalled ? `✓ ${pkg.name}` : pkg.name,
+            description: pkg.description
+              ? truncateDescription(pkg.description, 60)
+              : "No description available",
+            detail: [
+              pkg.isImported ? "📦 Already imported in this file" : null,
+              pkg.isInstalled ? "📦 Installed in project" : null,
+              pkg.version ? `Version: ${pkg.version}` : null,
+              pkg.popularity
+                ? `Popularity: ${Math.round(pkg.popularity * 100)}%`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" | "),
+            alwaysShow: true,
+            pkg: pkg,
+          };
+
+          item.buttons = [];
+          if (pkg.isInstalled) {
+            item.buttons.push({
+              iconPath: new vscode.ThemeIcon("trash"),
+              tooltip: `Remove ${pkg.name} from pubspec.yaml`,
+            });
+          } else {
+            item.buttons.push({
+              iconPath: new vscode.ThemeIcon("add"),
+              tooltip: `Add ${pkg.name} to pubspec.yaml`,
+            });
+          }
+
+          return item;
+        });
+      } catch (error) {
+        console.error("Error updating suggestions:", error);
+        quickPick.items = [
+          { label: "Error fetching packages", alwaysShow: true },
+        ];
+      } finally {
+        quickPick.busy = false;
+      }
+    }, 500);
+
+    quickPick.onDidChangeValue(updateItems);
 
     quickPick.onDidChangeSelection(async (selection) => {
       if (selection[0]) {
         const pkg = (selection[0] as CustomQuickPickItem).pkg;
-        const isInstalled = (selection[0] as CustomQuickPickItem).isInstalled;
-        quickPick.dispose();
+        quickPick.value = "";
+        quickPick.items = [];
 
-        if (isInstalled) {
-          await addImportStatement(pkg, document, range);
+        if (pkg.isInstalled) {
+          await addImportStatement(pkg.name, document, range);
         } else {
-          await runFlutterPubAdd(pkg, document, range);
+          await runFlutterPubAdd(pkg.name, document, range);
         }
       }
     });
 
+    quickPick.onDidTriggerItemButton(async ({ item, button }) => {
+      const pkg = (item as CustomQuickPickItem).pkg;
+      quickPick.value = "";
+      quickPick.items = [];
+
+      if ((button as any).iconPath.id === "trash") {
+        await runFlutterPubRemove(pkg.name);
+      } else if ((button as any).iconPath.id === "add") {
+        await runFlutterPubAdd(pkg.name, document, range);
+      }
+    });
+
+    quickPick.onDidTriggerButton(async (button) => {
+      if (button === filterButton) {
+        showInstalledOnly = !showInstalledOnly;
+        quickPick.buttons = [
+          {
+            iconPath: new vscode.ThemeIcon(
+              showInstalledOnly ? "list-filter" : "filter"
+            ),
+            tooltip: showInstalledOnly
+              ? "Show all packages"
+              : "Show installed packages only",
+          },
+        ];
+        await updateItems(quickPick.value);
+      }
+    });
+
     quickPick.onDidHide(() => quickPick.dispose());
-    quickPick.show();
+
+    await updateItems(query);
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to search for packages: ${error}`);
   } finally {
@@ -316,6 +736,49 @@ async function runFlutterPubAdd(
   );
 }
 
+async function runFlutterPubRemove(pkg: string) {
+  const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!cwd) {
+    vscode.window.showErrorMessage("Workspace folder not found");
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Removing package ${pkg}...`,
+      cancellable: false,
+    },
+    async (progress) => {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          exec(`flutter pub remove ${pkg}`, { cwd }, (err, stdout, stderr) => {
+            if (err) {
+              reject(new Error(stderr));
+              return;
+            }
+            resolve();
+          });
+        });
+
+        await new Promise<void>((resolve, reject) => {
+          exec(`flutter pub get`, { cwd }, (err, stdout, stderr) => {
+            if (err) {
+              reject(new Error(stderr));
+              return;
+            }
+            resolve();
+          });
+        });
+
+        vscode.window.showInformationMessage(`✅ Package '${pkg}' removed`);
+      } catch (error) {
+        vscode.window.showErrorMessage(`❌ Failed to remove package: ${error}`);
+      }
+    }
+  );
+}
+
 function runFlutterPubGet(showTerminal: boolean = true) {
   const terminalName = "Flutter Pub Get";
   let existingTerminal = vscode.window.terminals.find(
@@ -332,7 +795,103 @@ function runFlutterPubGet(showTerminal: boolean = true) {
   existingTerminal.sendText("flutter pub get");
 }
 
-function fetchMatchingPackages(
+async function getInstalledPackages(
+  document: vscode.TextDocument
+): Promise<PackageInfo[]> {
+  const pubspecPath = path.join(
+    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || "",
+    "pubspec.yaml"
+  );
+  const fileContent = document.getText();
+  const installedPackages: PackageInfo[] = [];
+
+  if (!fs.existsSync(pubspecPath)) {
+    return installedPackages;
+  }
+
+  const pubspecContent = fs.readFileSync(pubspecPath, "utf8");
+  try {
+    const pubspec = yaml.load(pubspecContent) as {
+      dependencies?: Record<string, any>;
+    };
+    if (pubspec?.dependencies) {
+      for (const [pkgName, versionSpec] of Object.entries(
+        pubspec.dependencies
+      )) {
+        const packageInfo = await fetchPackageDetails(pkgName);
+        installedPackages.push({
+          name: pkgName,
+          description: packageInfo.description || "No description available",
+          isInstalled: true,
+          isImported: fileContent.includes(
+            `package:${pkgName}/${pkgName}.dart`
+          ),
+          methods: getPackageMethods(pkgName),
+          version: typeof versionSpec === "string" ? versionSpec : undefined,
+          latestVersion: packageInfo.latestVersion,
+          popularity: packageInfo.popularity,
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Failed to parse pubspec.yaml:", e);
+    const lines = pubspecContent.split("\n");
+    for (const line of lines) {
+      const match = line.match(/^\s*([a-zA-Z0-9_-]+):\s*(.*)/);
+      if (match) {
+        const pkgName = match[1];
+        const versionSpec = match[2].trim();
+        const packageInfo = await fetchPackageDetails(pkgName);
+        installedPackages.push({
+          name: pkgName,
+          description: packageInfo.description || "No description available",
+          isInstalled: true,
+          isImported: fileContent.includes(
+            `package:${pkgName}/${pkgName}.dart`
+          ),
+          methods: getPackageMethods(pkgName),
+          version: versionSpec,
+          latestVersion: packageInfo.latestVersion,
+          popularity: packageInfo.popularity,
+        });
+      }
+    }
+  }
+
+  return installedPackages;
+}
+
+async function fetchPackageDetails(
+  packageName: string
+): Promise<Partial<PackageInfo>> {
+  return new Promise((resolve) => {
+    https
+      .get(`https://pub.dev/api/packages/${packageName}`, (res) => {
+        if (res.statusCode !== 200) {
+          resolve({});
+          return;
+        }
+
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          try {
+            const result = JSON.parse(data);
+            resolve({
+              description: result?.latest?.pubspec?.description,
+              latestVersion: result?.latest?.version,
+              popularity: result?.popularityScore,
+            });
+          } catch (e) {
+            resolve({});
+          }
+        });
+      })
+      .on("error", () => resolve({}));
+  });
+}
+
+async function fetchMatchingPackages(
   query: string,
   document: vscode.TextDocument
 ): Promise<PackageInfo[]> {
@@ -362,14 +921,45 @@ function fetchMatchingPackages(
                 : "";
               const fileContent = document.getText();
 
+              const installedPackages: Set<string> = new Set();
+              if (pubspecContent) {
+                try {
+                  const pubspec = yaml.load(pubspecContent);
+                  if (
+                    typeof pubspec === "object" &&
+                    pubspec !== null &&
+                    "dependencies" in pubspec
+                  ) {
+                    Object.keys(
+                      (pubspec as { dependencies: Record<string, any> })
+                        .dependencies
+                    ).forEach((dep) => {
+                      installedPackages.add(dep.toLowerCase());
+                    });
+                  }
+                } catch (e) {
+                  console.error("Failed to parse pubspec.yaml:", e);
+                  const lines = pubspecContent.split("\n");
+                  lines.forEach((line) => {
+                    const match = line.match(/^\s*([a-zA-Z0-9_-]+):/);
+                    if (match) {
+                      installedPackages.add(match[1].toLowerCase());
+                    }
+                  });
+                }
+              }
+
               const packages =
                 results.packages?.slice(0, 10).map((pkg: any) => ({
                   name: pkg.package,
-                  description: pkg.description,
-                  isInstalled: pubspecContent.includes(`${pkg.package}:`),
+                  description: pkg.description || "No description available",
+                  isInstalled: installedPackages.has(pkg.package.toLowerCase()),
                   isImported: fileContent.includes(
                     `package:${pkg.package}/${pkg.package}.dart`
                   ),
+                  methods: getPackageMethods(pkg.package),
+                  popularity: pkg.popularityScore,
+                  latestVersion: pkg.latestVersion,
                 })) || [];
 
               resolve(packages);
@@ -383,6 +973,72 @@ function fetchMatchingPackages(
         reject(err);
       });
   });
+}
+
+function getPackageMethods(packageName: string): string[] {
+  const methodMap: { [key: string]: string[] } = {
+    dio: ["get", "post", "put", "delete", "head", "patch", "download", "fetch"],
+    get: ["to", "off", "offAll", "lazyPut", "put", "find", "reset"],
+    flutter_bloc: [
+      "BlocProvider",
+      "BlocBuilder",
+      "BlocListener",
+      "BlocConsumer",
+      "RepositoryProvider",
+    ],
+    provider: [
+      "Provider",
+      "ChangeNotifierProvider",
+      "Consumer",
+      "Selector",
+      "MultiProvider",
+      "FutureProvider",
+      "StreamProvider",
+    ],
+    http: ["get", "post", "put", "delete", "head", "patch", "read"],
+    shared_preferences: [
+      "getInt",
+      "setInt",
+      "getBool",
+      "setBool",
+      "getDouble",
+      "setDouble",
+      "getString",
+      "setString",
+      "getStringList",
+      "setStringList",
+      "remove",
+      "clear",
+    ],
+    cached_network_image: [
+      "CachedNetworkImage",
+      "CachedNetworkImageProvider",
+      "clearCache",
+    ],
+    intl: [
+      "DateFormat",
+      "NumberFormat",
+      "BidiFormatter",
+      "MessageLookup",
+      "Intl.defaultLocale",
+    ],
+    url_launcher: ["launch", "canLaunch", "launchUrl"],
+    path_provider: [
+      "getTemporaryDirectory",
+      "getApplicationDocumentsDirectory",
+      "getApplicationSupportDirectory",
+      "getLibraryDirectory",
+      "getExternalStorageDirectory",
+    ],
+    sqflite: [
+      "openDatabase",
+      "deleteDatabase",
+      "Database",
+      "DatabaseFactory",
+      "Batch",
+    ],
+  };
+  return methodMap[packageName.toLowerCase()] || [];
 }
 
 function truncateDescription(description: string, maxLength: number): string {
