@@ -1,44 +1,71 @@
-# Flutter Auto Import
+# auto-import-flutter README
 
-![Extension Icon](images/icon2.png)
-
-A Visual Studio Code extension that simplifies Flutter development by automatically detecting and importing required packages with intelligent suggestions.
+This is the README for your extension "auto-import-flutter". After writing up a brief description, we recommend including the following sections.
 
 ## Features
 
-### Smart Package Detection
+Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
 
-![Demo](images/preview.gif)
+For example if there is an image subfolder under your extension project workspace:
 
-- **Ctrl+Shift+A** on any text to search for matching Flutter packages
-- Shows packages already installed in your project
-- One-click import for new packages
+\!\[feature X\]\(images/feature-x.png\)
 
-### Intelligent Import Management
+> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
 
-- Automatically adds imports at the correct file position
-- Detects existing imports to prevent duplicates
-- Runs `flutter pub get` automatically when needed
+## Requirements
 
-### Quick Actions
+If you have any requirements or dependencies, add a section describing those and how to install and configure them.
 
-- Lightbulb 💡 suggestions for quick imports
-- Status bar notifications for import status
+## Extension Settings
 
-## Installation
+Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
 
-1. Open VS Code Extensions view (`Ctrl+Shift+X`)
-2. Search for "Flutter Auto Import"
-3. Click Install
-4. Reload VS Code when prompted
+For example:
 
-## Configuration
+This extension contributes the following settings:
 
-Add these to your VS Code `settings.json`:
+* `myExtension.enable`: Enable/disable this extension.
+* `myExtension.thing`: Set to `blah` to do something.
 
-```json
-{
-  "flutterAutoImport.autoPubGetOnSave": true,
-  "flutterAutoImport.enableSuggestions": true
-}
-```
+## Known Issues
+
+Calling out known issues can help limit users opening duplicate issues against your extension.
+
+## Release Notes
+
+Users appreciate release notes as you update your extension.
+
+### 1.0.0
+
+Initial release of ...
+
+### 1.0.1
+
+Fixed issue #.
+
+### 1.1.0
+
+Added features X, Y, and Z.
+
+---
+
+## Following extension guidelines
+
+Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+
+* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+
+## Working with Markdown
+
+You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+
+* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
+* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
+* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+
+## For more information
+
+* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
+* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+
+**Enjoy!**
