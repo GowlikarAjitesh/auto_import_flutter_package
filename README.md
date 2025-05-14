@@ -33,12 +33,13 @@
   - Responsive UI with clear icons and text for an intuitive experience.
 
 ## Installation
-
+### Note
+You must have Flutter installed and open a working Flutter project to use these extensions.
 ### From VS Code
 1. Open VS Code.
 2. Go to the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X` on macOS).
 3. Click the **...** menu and select **Install from VSIX**.
-4. Drag and drop or browse to the `.vsix` file (e.g., `flutter-package-manager-0.0.1.vsix`) and install.
+4. Drag and drop or browse to the `.vsix` file `auto-import-flutter-0.1.1.vsix` and `flutter-dep-fixer-0.0.1.vsix` (which are available in this repository) and install.
 
 ### From GitHub Repository
 To install the extension directly from the GitHub repository, follow these steps:
