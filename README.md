@@ -41,7 +41,7 @@
 
 ## Installation
 
-### From VS Code
+### From VS Code (Easy Way)
 1. Open VS Code.
 2. Go to the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X` on macOS).
 3. Click the **...** menu and select **Install from VSIX**.
