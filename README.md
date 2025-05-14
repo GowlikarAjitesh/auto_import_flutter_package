@@ -4,14 +4,21 @@
 
 [![Version](https://img.shields.io/badge/version-0.0.1-blue.svg)](https://marketplace.visualstudio.com/) [![Build Status](https://img.shields.io/badge/build-passing-green.svg)](https://github.com/GowlikarAjitesh/auto_import_flutter_package)
 
-**Flutter Package Manager** is a powerful VS Code extension designed to streamline the process of adding and managing packages in your Flutter project's `pubspec.yaml` file. With an intuitive interface and seamless integration, it simplifies package management, saving you time and effort.
+**Flutter Package Manager** is a powerful Visual Studio Code (VS Code) extension designed to streamline the **management of Flutter packages** in your project's `pubspec.yaml` file. With an intuitive interface and seamless integration, it simplifies package management, saving developers time and effort. The repository also includes a companion extension, **Flutter Dependency Fixer**, to address dependency-related issues.
+
+## Prerequisites
+
+- **Flutter**: Ensure Flutter is installed and configured on your system.
+- **VS Code**: Use Visual Studio Code with a Flutter project open (must include a `pubspec.yaml` file in the workspace root).
+- **Node.js**: Required for building the extension from source.
+
+
 
 ## Features
 
 - **Quick Package Search**:
   - Trigger with `Ctrl+Shift+A` to open a Quick Pick UI.
-  - Search for packages with a responsive search bar.
-  - Prefills search with selected text for faster lookups.
+  - Search packages using a responsive search bar, prefilled with selected text for faster lookups.
   - Displays up to 10 package suggestions with name, version, and description.
 
 - **Toggle Installed/Uninstalled Packages**:
@@ -21,33 +28,34 @@
 - **Add/Delete Packages**:
   - Add packages with a `+` icon, silently updating `pubspec.yaml`.
   - Remove installed packages with a `×` icon, marked as "Already installed."
-  - No terminal opened during operations; runs `flutter pub get` in the background.
+  - Executes `flutter pub get` in the background without opening a terminal.
 
 - **Hover Information**:
   - Hover over package names in `pubspec.yaml` to view detailed descriptions and available methods (placeholder due to pub.dev API limitations).
   - Presented in a clean, Markdown-formatted tooltip.
 
 - **Robust and Efficient**:
-  - Comprehensive error handling for missing or invalid `pubspec.yaml`.
+  - Comprehensive error handling for missing or invalid `pubspec.yaml` files.
   - Caches package data for faster searches.
   - Responsive UI with clear icons and text for an intuitive experience.
 
 ## Installation
-### Note
-You must have Flutter installed and open a working Flutter project to use these extensions.
+
 ### From VS Code
 1. Open VS Code.
 2. Go to the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X` on macOS).
 3. Click the **...** menu and select **Install from VSIX**.
-4. Drag and drop or browse to the `.vsix` file `auto-import-flutter-0.1.1.vsix` and `flutter-dep-fixer-0.0.1.vsix` (which are available in this repository) and install.
+4. Download the `.vsix` files from the [GitHub repository](https://github.com/GowlikarAjitesh/auto_import_flutter_package):
+   - `auto-import-flutter-0.1.1.vsix` (Flutter Package Manager)
+   - `flutter-dep-fixer-0.0.1.vsix` (Flutter Dependency Fixer, optional)
+5. Drag and drop or browse to each `.vsix` file and install.
 
 ### From GitHub Repository
-To install the extension directly from the GitHub repository, follow these steps:
+To build and install the extension from source:
 
 1. **Clone the Repository**:
    ```bash
    git clone https://github.com/GowlikarAjitesh/auto_import_flutter_package.git
-
 2. **Navigate to the Project Directory**:
     ```bash
     cd auto_import_flutter_package
@@ -64,12 +72,11 @@ Create a .vsix file using vsce:
     ```bash
     npm run package
     
-**This generates a file like flutter-package-manager-0.0.1.vsix in the project root**.
+**Note:** This generates a file like flutter-package-manager-0.0.1.vsix in the project root.
 
-## Install the Extension
-Follow the "From VS Code" steps above to install the .vsix file.
+6. **Install the Extension**: Follow the "From VS Code" steps above to install the .vsix file.
 
-### Run in Debug Mode (Optional)
+### Development (Debug Mode)
 
 Open the project in VS Code.
 
@@ -77,10 +84,13 @@ Press Ctrl+Shift+F5 (or F5 for standard debugging) to launch the Extension Devel
 
 A new VS Code window will open; open a Flutter project in this window to test the extension.
 
-## Usage
-Open a Flutter Project:
+## 🛠️ Usage
 
-Ensure your project has a pubspec.yaml file in the workspace root.
+### Basic Commands
+| Shortcut               | Action                          |
+|------------------------|---------------------------------|
+| `Ctrl` + `Shift` + `A` | Open package manager interface  |
+| `Ctrl` + `Shift` + `P` | Show VS Code command palette    |
 
 ### Search and Manage Packages:
 
