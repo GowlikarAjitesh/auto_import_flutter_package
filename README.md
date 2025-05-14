@@ -42,12 +42,13 @@
 ## Installation
 
 ### From VS Code (Easy Way)
-1. Open VS Code.
-2. Go to the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X` on macOS).
-3. Click the **...** menu and select **Install from VSIX**.
-4. Download the `.vsix` files from the [GitHub repository](https://github.com/GowlikarAjitesh/auto_import_flutter_package):
+
+1. Download the `.vsix` files from our [GitHub repository](https://github.com/GowlikarAjitesh/auto_import_flutter_package).  **(This is the same Repository, just scroll up)**
    - `auto-import-flutter-0.1.1.vsix` (Flutter Package Manager)
    - `flutter-dep-fixer-0.0.1.vsix` (Flutter Dependency Fixer, optional)
+2. Open VS Code.
+3. Go to the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X` on macOS).
+4. Click the **...** menu and select **Install from VSIX**.
 5. Drag and drop or browse to each `.vsix` file and install.
 
 ### From GitHub Repository
